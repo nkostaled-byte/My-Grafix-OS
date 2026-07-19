@@ -1,0 +1,6 @@
+{
+  "name": "Grafix Business OS",
+  "description": "A premium, multi-tenant Business Operating System for managing bookings, orders, inventory, customers, invoices, and analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

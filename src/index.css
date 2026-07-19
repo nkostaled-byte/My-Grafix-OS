@@ -1,0 +1,68 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ==================================================
+   DARK MODE
+   ==================================================
+   This app uses a small, consistent set of gray/white utility classes
+   throughout every component. Rather than adding dark: variants to
+   thousands of individual className instances (high risk of missing
+   spots), these rules override the actual computed color of those
+   utilities when a .dark class is present on an ancestor (set on <html>
+   by the theme toggle in App.tsx).
+
+   Deliberately NOT touched: bg-gray-800/900/950, bg-slate-900,
+   border-gray-900/950, border-slate-900, text-white. These are used for
+   intentionally-dark, high-contrast elements (primary buttons, sidebar
+   accents, badges) that should look the same regardless of theme, not
+   invert. Only light surfaces, light borders, and dark-on-light text
+   are flipped here.
+*/
+
+html.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background-color: #0f0f11;
+}
+
+/* Backgrounds - Sleek, distinct dark greys */
+.dark .bg-white { background-color: #1d1d21; }
+.dark .bg-gray-50 { background-color: #0f0f11; }
+.dark .bg-gray-100 { background-color: #28282e; }
+.dark .bg-gray-200 { background-color: #33333a; }
+.dark .bg-gray-300 { background-color: #44444f; }
+.dark .bg-gray-400 { background-color: #555562; }
+
+/* Opacity and Hover helper overrides */
+.dark .bg-gray-50\/30 { background-color: rgba(15, 15, 17, 0.3); }
+.dark .bg-gray-50\/50 { background-color: rgba(15, 15, 17, 0.5); }
+.dark .bg-gray-100\/50 { background-color: rgba(40, 40, 46, 0.5); }
+.dark .bg-gray-100\/75 { background-color: rgba(40, 40, 46, 0.75); }
+.dark .hover\:bg-gray-50:hover { background-color: rgba(29, 29, 33, 0.6); }
+.dark .hover\:bg-gray-100:hover { background-color: #28282e; }
+
+/* Borders - High-quality borders to define layouts */
+.dark .border-gray-50 { border-color: #1d1d21; }
+.dark .border-gray-100 { border-color: #28282e; }
+.dark .border-gray-200 { border-color: #33333a; }
+.dark .border-gray-300 { border-color: #44444f; }
+
+/* Text - Premium readability with bright light greys and whites */
+.dark .text-gray-950 { color: #ffffff; }
+.dark .text-gray-900 { color: #fdfdfd; }
+.dark .text-gray-800 { color: #f3f3f5; }
+.dark .text-gray-700 { color: #e5e5eb; }
+.dark .text-gray-600 { color: #d1d1d6; }
+.dark .text-gray-500 { color: #bebec3; }
+.dark .text-gray-400 { color: #a2a2aa; }
+.dark .text-gray-300 { color: #86868f; }
+
+/* Smooth theme transitions, scoped to color-related properties only
+   so this doesn't add jank to layout/transform animations elsewhere. */
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
