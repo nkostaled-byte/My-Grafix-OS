@@ -1,17 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, Mail, Phone, Tag, Calendar, FileText, CheckCircle, Plus, 
   Trash2, Send, Percent, Layers, Shield, UserPlus, FileUp, 
   Settings, Image, Globe, Search, ArrowUpRight, TrendingUp, AlertTriangle, Download
 } from 'lucide-react';
 import { db } from '../lib/supabase';
-import { Client, Customer, Invoice, Submission, TeamMember } from '../types';
+import { Client, Customer, Invoice, Submission, TeamMember, Staff } from '../types';
 
 // ==========================================
 // 1. CUSTOMERS VIEW
 // ==========================================
 export function CustomersView({ client }: { client: Client }) {
-  const [customers, setCustomers] = useState<Customer[]>(() => db.getCustomers(client.id));
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
   const [selectedCust, setSelectedCust] = useState<Customer | null>(null);
 
@@ -23,17 +23,30 @@ export function CustomersView({ client }: { client: Client }) {
   const [tagsInput, setTagsInput] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
 
+  // Load customers asynchronously
+  useEffect(() => {
+    (async () => {
+      const loaded = await db.getCustomers(client.id);
+      setCustomers(loaded as Customer[]);
+    })();
+  }, [client.id]);
+
+  const reloadCustomers = async () => {
+    const loaded = await db.getCustomers(client.id);
+    setCustomers(loaded as Customer[]);
+  };
+
   const filtered = customers.filter(c => 
     c.name.toLowerCase().includes(search.toLowerCase()) || 
     c.email.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email) return;
     const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
-    const fresh = db.createCustomer(client.id, { name, email, phone, notes, tags });
-    setCustomers(db.getCustomers(client.id));
+    await db.createCustomer(client.id, { name, email, phone, notes, tags });
+    await reloadCustomers();
     setIsAddOpen(false);
     setName(''); setEmail(''); setPhone(''); setNotes(''); setTagsInput('');
   };
@@ -174,7 +187,7 @@ export function CustomersView({ client }: { client: Client }) {
 // 2. INVOICES VIEW
 // ==========================================
 export function InvoicesView({ client }: { client: Client }) {
-  const [invoices, setInvoices] = useState<Invoice[]>(() => db.getInvoices(client.id));
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
@@ -184,6 +197,19 @@ export function InvoicesView({ client }: { client: Client }) {
   const [itemDesc, setItemDesc] = useState('');
   const [itemPrice, setItemPrice] = useState(100);
   const [taxRate, setTaxRate] = useState(20);
+
+  // Load invoices asynchronously from Worker
+  useEffect(() => {
+    (async () => {
+      const loaded = await db.getInvoices(client.id);
+      setInvoices(loaded as Invoice[]);
+    })();
+  }, [client.id]);
+
+  const reloadInvoices = async () => {
+    const loaded = await db.getInvoices(client.id);
+    setInvoices(loaded as Invoice[]);
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,7 +222,7 @@ export function InvoicesView({ client }: { client: Client }) {
     });
 
     if (res.success) {
-      setInvoices(db.getInvoices(client.id));
+      await reloadInvoices();
       setIsAddOpen(false);
       setCustName(''); setCustEmail(''); setItemDesc(''); setItemPrice(100);
     }
@@ -205,7 +231,7 @@ export function InvoicesView({ client }: { client: Client }) {
   const handleSendInvoice = async (inv: Invoice) => {
     await db.sendInvoiceAction(client.id, inv.id);
     alert(`Emailed professional invoice PDF ${inv.invoice_number} copy to ${inv.customer_email} successfully!`);
-    setInvoices(db.getInvoices(client.id));
+    await reloadInvoices();
   };
 
   return (
@@ -325,11 +351,28 @@ export function InvoicesView({ client }: { client: Client }) {
 // 3. QUOTES VIEW
 // ==========================================
 export function QuotesView({ client }: { client: Client }) {
-  const [submissions, setSubmissions] = useState<Submission[]>(() => db.getSubmissions(client.id, 'quote'));
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
 
-  const handleStatusChange = (id: string, status: 'replied' | 'archived') => {
-    db.updateSubmissionStatus(id, status);
-    setSubmissions(db.getSubmissions(client.id, 'quote'));
+  useEffect(() => {
+    (async () => {
+      const [loadedSubs, loadedStaff] = await Promise.all([
+        db.getSubmissions(client.id, 'quote'),
+        db.getStaff(client.id),
+      ]);
+      setSubmissions(loadedSubs as Submission[]);
+      setStaff(loadedStaff as Staff[]);
+    })();
+  }, [client.id]);
+
+  const reloadSubmissions = async () => {
+    const loaded = await db.getSubmissions(client.id, 'quote');
+    setSubmissions(loaded as Submission[]);
+  };
+
+  const handleStatusChange = async (id: string, status: 'replied' | 'archived') => {
+    await db.updateSubmissionStatus(id, status);
+    await reloadSubmissions();
   };
 
   const handleConvertQuoteToInvoice = async (sub: Submission) => {
@@ -338,8 +381,8 @@ export function QuotesView({ client }: { client: Client }) {
       items: [{ description: `Quotation fulfillment: "${sub.message.substring(0, 40)}..."`, quantity: 1, price: 350.00 }],
       tax: 20
     });
-    db.updateSubmissionStatus(sub.id, 'replied');
-    setSubmissions(db.getSubmissions(client.id, 'quote'));
+    await db.updateSubmissionStatus(sub.id, 'replied');
+    await reloadSubmissions();
     alert(`Quotation successfully converted to active draft invoice billing!`);
   };
 
@@ -405,17 +448,33 @@ export function QuotesView({ client }: { client: Client }) {
 // 4. CONTACT FORMS VIEW
 // ==========================================
 export function ContactFormsView({ client }: { client: Client }) {
-  const [submissions, setSubmissions] = useState<Submission[]>(() => db.getSubmissions(client.id, 'contact'));
-  const staff = db.getStaff(client.id);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
 
-  const handleAssignStaff = (subId: string, staffId: string) => {
-    db.assignStaffToSubmission(subId, staffId || undefined);
-    setSubmissions(db.getSubmissions(client.id, 'contact'));
+  useEffect(() => {
+    (async () => {
+      const [loadedSubs, loadedStaff] = await Promise.all([
+        db.getSubmissions(client.id, 'contact'),
+        db.getStaff(client.id),
+      ]);
+      setSubmissions(loadedSubs as Submission[]);
+      setStaff(loadedStaff as Staff[]);
+    })();
+  }, [client.id]);
+
+  const reloadSubmissions = async () => {
+    const loaded = await db.getSubmissions(client.id, 'contact');
+    setSubmissions(loaded as Submission[]);
   };
 
-  const handleArchive = (subId: string) => {
-    db.updateSubmissionStatus(subId, 'archived');
-    setSubmissions(db.getSubmissions(client.id, 'contact'));
+  const handleAssignStaff = async (subId: string, staffId: string) => {
+    await db.assignStaffToSubmission(subId, staffId || undefined);
+    await reloadSubmissions();
+  };
+
+  const handleArchive = async (subId: string) => {
+    await db.updateSubmissionStatus(subId, 'archived');
+    await reloadSubmissions();
   };
 
   return (
@@ -457,10 +516,10 @@ export function ContactFormsView({ client }: { client: Client }) {
                 </td>
                 <td className="py-4 px-5 text-right">
                   <div className="flex gap-2 justify-end">
-                    <button 
-                      onClick={() => {
-                        db.updateSubmissionStatus(sub.id, 'replied');
-                        setSubmissions(db.getSubmissions(client.id, 'contact'));
+<button 
+                      onClick={async () => {
+                        await db.updateSubmissionStatus(sub.id, 'replied');
+                        await reloadSubmissions();
                         alert(`Dispatched draft response to ${sub.customer_email}!`);
                       }}
                       className="px-2.5 py-1 bg-gray-900 text-white rounded-lg hover:bg-gray-800 font-semibold transition-colors text-[10px]"
@@ -565,34 +624,47 @@ export function MarketingView({ client }: { client: Client }) {
 // 7. TEAM VIEW
 // ==========================================
 export function TeamView({ client }: { client: Client }) {
-  const [team, setTeam] = useState<TeamMember[]>(() => db.getTeamMembers(client.id));
+  const [team, setTeam] = useState<TeamMember[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
+
+  // Load team asynchronously
+  useEffect(() => {
+    (async () => {
+      const loaded = await db.getTeamMembers(client.id);
+      setTeam(loaded as TeamMember[]);
+    })();
+  }, [client.id]);
+
+  const reloadTeam = async () => {
+    const loaded = await db.getTeamMembers(client.id);
+    setTeam(loaded as TeamMember[]);
+  };
 
   // Form states
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'admin' | 'staff'>('staff');
 
-  const handleInvite = (e: React.FormEvent) => {
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email) return;
 
-    db.createTeamMember(client.id, {
+    await db.createTeamMember(client.id, {
       name,
       email,
       role,
       permissions: { manage_billing: false, manage_inventory: true, manage_team: false }
     });
 
-    setTeam(db.getTeamMembers(client.id));
+    await reloadTeam();
     setIsAddOpen(false);
     setName(''); setEmail('');
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this team member access?')) {
-      db.deleteTeamMember(id);
-      setTeam(db.getTeamMembers(client.id));
+      await db.deleteTeamMember(id);
+      await reloadTeam();
     }
   };
 

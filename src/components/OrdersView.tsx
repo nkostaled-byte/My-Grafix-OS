@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  ShoppingBag, Search, Plus, Filter, FileText, Send, 
-  CheckCircle, RefreshCw, X, ArrowUpRight, ChevronDown, Trash2
+  ShoppingBag, Search, Plus, FileText, Send, 
+  Trash2
 } from 'lucide-react';
 import { db } from '../lib/supabase';
 import { Client, Order, OrderItem, Product } from '../types';
@@ -12,8 +12,7 @@ interface OrdersViewProps {
 }
 
 export default function OrdersView({ client, onRefreshMetrics }: OrdersViewProps) {
-  // Actually load orders from our state management
-  const [activeTab, setActiveTab] = useState<'All' | 'new' | 'paid' | 'pending' | 'cancelled'>('All');
+  const [activeTab, setActiveTab] = useState<'All' | 'paid' | 'pending' | 'cancelled'>('All');
   const [search, setSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -26,55 +25,29 @@ export default function OrdersView({ client, onRefreshMetrics }: OrdersViewProps
   const [notes, setNotes] = useState('');
   const [cartItems, setCartItems] = useState<{ productId: string; qty: number }[]>([]);
 
-  // Fetch lists
-  const products = db.getProducts(client.id);
-  const allOrders = (window as any).grafix_orders || (db.getCustomers(client.id) ? [] : []);
-  
-  // If first render or empty, grab from direct local data
-  const loadOrders = () => {
-    const list = db.getDailySales(client.id) ? (window as any).grafix_orders || [] : [];
-    if (list.length === 0) {
-      // Seed initial orders
-      const ords = [
-        {
-          id: 'ord-1',
-          client_id: client.id,
-          order_number: 'ORD-729401',
-          customer_name: 'Alexander Sterling',
-          customer_email: 'alexander@sterling.com',
-          customer_phone: '+44 7700 900077',
-          status: 'paid' as const,
-          total: 36.00,
-          notes: 'Picked up in shop.',
-          shipping_address: 'In-Store Pickup',
-          created_at: new Date(Date.now() - 4 * 3600000).toISOString()
-        },
-        {
-          id: 'ord-2',
-          client_id: client.id,
-          order_number: 'ORD-810293',
-          customer_name: 'Sarah Connors',
-          customer_email: 'sarah@skynet.net',
-          status: 'pending' as const,
-          total: 22.00,
-          notes: 'Standard shipping requested.',
-          shipping_address: 'Apartment 101, Resistance Dr, London, EC1N 2HA',
-          created_at: new Date(Date.now() - 24 * 3600000).toISOString()
-        }
-      ];
-      (window as any).grafix_orders = ords;
-      return ords;
-    }
-    return list;
+  // Data states
+  const [products, setProducts] = useState<Product[]>([]);
+  const [currentOrders, setCurrentOrders] = useState<Order[]>([]);
+
+  // Load data asynchronously from Worker
+  useEffect(() => {
+    (async () => {
+      const [loadedOrders, loadedProducts] = await Promise.all([
+        db.getOrders(client.id),
+        db.getProducts(client.id),
+      ]);
+      setCurrentOrders(loadedOrders as Order[]);
+      setProducts(loadedProducts as Product[]);
+    })();
+  }, [client.id]);
+
+  const reloadOrders = async () => {
+    const loaded = await db.getOrders(client.id);
+    setCurrentOrders(loaded as Order[]);
   };
 
-  const [currentOrders, setCurrentOrders] = useState<Order[]>(loadOrders);
-
-  const getOrderItems = (orderId: string): OrderItem[] => {
-    return [
-      { id: 'oi-1', order_id: 'ord-1', product_id: 'prod-barber-1', product_name: 'Classic Pomade (Strong Hold)', qty: 2, price: 18.00 },
-      { id: 'oi-2', order_id: 'ord-2', product_id: 'prod-barber-2', product_name: 'Sandalwood Beard Balm', qty: 1, price: 22.00 }
-    ].filter(oi => oi.order_id === orderId);
+  const getOrderItems = (_orderId: string): OrderItem[] => {
+    return [];
   };
 
   const filteredOrders = currentOrders.filter(o => {
@@ -108,23 +81,7 @@ export default function OrdersView({ client, onRefreshMetrics }: OrdersViewProps
     });
 
     if (res.success) {
-      const freshOrder: Order = {
-        id: res.orderId,
-        client_id: client.id,
-        order_number: res.orderNumber,
-        customer_name: custName,
-        customer_email: custEmail,
-        customer_phone: custPhone || undefined,
-        status: 'paid',
-        total: res.total,
-        notes: notes || undefined,
-        created_at: new Date().toISOString()
-      };
-
-      const updated = [freshOrder, ...currentOrders];
-      setCurrentOrders(updated);
-      (window as any).grafix_orders = updated;
-
+      await reloadOrders();
       setIsCheckoutOpen(false);
       setCartItems([]);
       setCustName('');
@@ -137,16 +94,19 @@ export default function OrdersView({ client, onRefreshMetrics }: OrdersViewProps
 
   const handleSendInvoice = async (order: Order) => {
     setSendingInvoiceId(order.id);
-    // Simulate invoice builder & send
-    await new Promise(resolve => setTimeout(resolve, 800));
-    await db.createInvoiceAction(client.id, {
-      customer: { name: order.customer_name, email: order.customer_email, phone: order.customer_phone },
-      items: getOrderItems(order.id).map(oi => ({ description: oi.product_name, quantity: oi.qty, price: oi.price })),
-      tax: 20,
-      orderId: order.id
-    });
-    alert(`Invoice and receipt sent to ${order.customer_email} successfully!`);
-    setSendingInvoiceId(null);
+    try {
+      await db.createInvoiceAction(client.id, {
+        customer: { name: order.customer_name, email: order.customer_email, phone: order.customer_phone },
+        items: getOrderItems(order.id).map(oi => ({ description: oi.product_name, quantity: oi.qty, price: oi.price })),
+        tax: 20,
+        orderId: order.id
+      });
+      alert(`Invoice and receipt sent to ${order.customer_email} successfully!`);
+    } catch (err: any) {
+      alert(`Failed to send invoice: ${err.message}`);
+    } finally {
+      setSendingInvoiceId(null);
+    }
   };
 
   const handleDownloadCsv = async () => {

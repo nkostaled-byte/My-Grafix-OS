@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, Users, ShoppingBag, Calendar, AlertCircle, 
   FileText, MessageSquare, ArrowUpRight, ArrowDownRight, 
@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { db } from '../lib/supabase';
 import { Client, Order, Booking, Product, Invoice, Submission } from '../types';
+import { workerApi } from '../lib/worker-api';
 
 interface DashboardViewProps {
   client: Client;
@@ -25,6 +26,41 @@ export default function DashboardView({ client, onNavigate, onTriggerQuickAction
   const [relinkLoading, setRelinkLoading] = useState(false);
   const [relinkError, setRelinkError] = useState('');
   const [relinkSuccess, setRelinkSuccess] = useState(false);
+
+  // Async data states
+  const [products, setProducts] = useState<Product[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [dailySales, setDailySales] = useState<any[]>([]);
+  const [monthlyRevenue, setMonthlyRevenue] = useState<any[]>([]);
+
+  // Load data from Worker
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [prodRes, bookRes, invRes, subRes, metricsRes] = await Promise.all([
+          workerApi.getProducts(),
+          workerApi.getBookings(),
+          workerApi.getInvoices(),
+          workerApi.getSubmissions(),
+          workerApi.getMetrics(),
+        ]);
+        if (prodRes.success) setProducts(prodRes.data || []);
+        if (bookRes.success) setBookings(bookRes.data || []);
+        if (invRes.success) setInvoices(invRes.data || []);
+        if (subRes.success) setSubmissions(subRes.data || []);
+        if (metricsRes.success && metricsRes.data) {
+          const m = metricsRes.data as any;
+          setDailySales(m.daily_sales || []);
+          setMonthlyRevenue(m.monthly_revenue || []);
+        }
+      } catch (err) {
+        console.error('[Dashboard] Failed to load data from Worker:', err);
+      }
+    };
+    loadData();
+}, [client.id]);
 
   const handleRelink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,33 +132,23 @@ export default function DashboardView({ client, onNavigate, onTriggerQuickAction
       setRelinkLoading(false);
     }
   };
-  
-  // Fetch real/fallback data filtered for client
-  const products = db.getProducts(client.id);
-  const customers = db.getCustomers(client.id);
-  const bookings = db.getBookings(client.id);
-  const invoices = db.getInvoices(client.id);
-  const submissions = db.getSubmissions(client.id);
-  const dailySales = db.getDailySales(client.id);
-  const monthlyRevenue = db.getMonthlyRevenue(client.id);
 
   // Derive dashboard statistics dynamically
-  const totalRevenueToday = dailySales[dailySales.length - 1]?.revenue || 0;
-  const previousRevenueDay = dailySales[dailySales.length - 2]?.revenue || 0;
+  const lowStockProducts = products.filter(p => (p as any).stock_qty <= ((p as any).low_stock_warning || 0));
+  const pendingInvoices = invoices.filter((i: any) => i.status === 'pending');
+  const unreadMessages = submissions.filter((s: any) => s.status === 'new' || s.status === 'received');
+  const activeBookingsCount = bookings.filter(b => b.status === 'upcoming').length;
+
+  const totalRevenueToday = dailySales.length > 0 ? dailySales[dailySales.length - 1]?.revenue || 0 : 0;
+  const previousRevenueDay = dailySales.length > 1 ? dailySales[dailySales.length - 2]?.revenue || 0 : 0;
   const revenueGrowth = previousRevenueDay > 0 
     ? Math.round(((totalRevenueToday - previousRevenueDay) / previousRevenueDay) * 100)
-    : 15;
-
-  const totalOrdersToday = dailySales[dailySales.length - 1]?.orders || 0;
-  const previousOrdersDay = dailySales[dailySales.length - 2]?.orders || 0;
+    : 0;
+  const totalOrdersToday = dailySales.length > 0 ? dailySales[dailySales.length - 1]?.orders || 0 : 0;
+  const previousOrdersDay = dailySales.length > 1 ? dailySales[dailySales.length - 2]?.orders || 0 : 0;
   const ordersGrowth = previousOrdersDay > 0 
     ? Math.round(((totalOrdersToday - previousOrdersDay) / previousOrdersDay) * 100)
-    : 8;
-
-  const lowStockProducts = products.filter(p => p.stock_qty <= p.low_stock_warning);
-  const pendingInvoices = invoices.filter(i => i.status === 'pending');
-  const unreadMessages = submissions.filter(s => s.status === 'new');
-  const activeBookingsCount = bookings.filter(b => b.status === 'upcoming').length;
+    : 0;
 
   // Custom Chart Tooltip styling
   const CustomTooltip = ({ active, payload, label }: any) => {

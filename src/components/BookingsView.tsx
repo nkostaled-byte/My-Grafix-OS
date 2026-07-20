@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, Clock, User, Plus, Search, Check, 
   MapPin, Phone, Mail, FileText, CheckSquare, AlertTriangle 
@@ -12,7 +12,9 @@ interface BookingsViewProps {
 }
 
 export default function BookingsView({ client, onRefreshMetrics }: BookingsViewProps) {
-  const [bookings, setBookings] = useState<Booking[]>(() => db.getBookings(client.id));
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [staffList, setStaffList] = useState<Staff[]>([]);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [activeView, setActiveView] = useState<'list' | 'calendar'>('list');
@@ -23,11 +25,27 @@ export default function BookingsView({ client, onRefreshMetrics }: BookingsViewP
   const [custPhone, setCustPhone] = useState('');
   const [serviceId, setServiceId] = useState('');
   const [staffId, setStaffId] = useState('');
-  const [startDate, setStartDate] = useState('2026-07-18');
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState('10:00');
 
-  const services = db.getServices(client.id);
-  const staffList = db.getStaff(client.id);
+  // Load data asynchronously from Worker
+  useEffect(() => {
+    (async () => {
+      const [loadedBookings, loadedServices, loadedStaff] = await Promise.all([
+        db.getBookings(client.id),
+        db.getServices(client.id),
+        db.getStaff(client.id),
+      ]);
+      setBookings(loadedBookings as Booking[]);
+      setServices(loadedServices as Service[]);
+      setStaffList(loadedStaff as Staff[]);
+    })();
+  }, [client.id]);
+
+  const reloadBookings = async () => {
+    const loaded = await db.getBookings(client.id);
+    setBookings(loaded as Booking[]);
+  };
 
   const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +60,7 @@ export default function BookingsView({ client, onRefreshMetrics }: BookingsViewP
     });
 
     if (res.success) {
-      setBookings(db.getBookings(client.id));
+      await reloadBookings();
       setIsAddOpen(false);
       // Reset form
       setCustName('');
@@ -54,11 +72,11 @@ export default function BookingsView({ client, onRefreshMetrics }: BookingsViewP
     }
   };
 
-  const handleUpdateStatus = (id: string, status: 'upcoming' | 'completed' | 'cancelled' | 'no-show') => {
-    db.updateBookingStatus(id, status);
-    setBookings(db.getBookings(client.id));
+  const handleUpdateStatus = async (id: string, status: 'upcoming' | 'completed' | 'cancelled' | 'no-show') => {
+    await db.updateBookingStatus(id, status);
+    await reloadBookings();
     if (selectedBooking?.id === id) {
-      setSelectedBooking({ ...selectedBooking, status });
+      setSelectedBooking(prev => prev ? { ...prev, status } : null);
     }
     onRefreshMetrics?.();
   };

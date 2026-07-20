@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Plus, Search, Filter, Edit2, Trash2, SlidersHorizontal, 
-  AlertTriangle, Check, RefreshCw, Layers, DollarSign, Barcode
+  Plus, Search, Edit2, Trash2, SlidersHorizontal, 
+  AlertTriangle, Layers, Barcode
 } from 'lucide-react';
 import { db, supabase, isSupabaseConfigured, workerBaseUrl } from '../lib/supabase';
 import { Client, Product } from '../types';
@@ -12,7 +12,20 @@ interface ProductsViewProps {
 }
 
 export default function ProductsView({ client, onRefreshMetrics }: ProductsViewProps) {
-  const [products, setProducts] = useState<Product[]>(() => db.getProducts(client.id));
+  const [products, setProducts] = useState<Product[]>([]);
+  
+  // Load products asynchronously from Worker
+  useEffect(() => {
+    (async () => {
+      const loaded = await db.getProducts(client.id);
+      setProducts(loaded as Product[]);
+    })();
+  }, [client.id]);
+
+  const reloadProducts = async () => {
+    const loaded = await db.getProducts(client.id);
+    setProducts(loaded as Product[]);
+  };
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedStockFilter, setSelectedStockFilter] = useState<string>('All');
@@ -129,7 +142,7 @@ export default function ProductsView({ client, onRefreshMetrics }: ProductsViewP
     }
   };
 
-  const handleCreateProduct = (e: React.FormEvent) => {
+  const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !sku) return;
 
@@ -138,7 +151,7 @@ export default function ProductsView({ client, onRefreshMetrics }: ProductsViewP
     // If upload succeeds, insert the product row with returned image_url, otherwise null
     const finalImageUrl = uploadedImageUrl || null;
 
-    const newProd = db.createProduct(client.id, {
+    await db.createProduct(client.id, {
       name,
       category,
       sku,
@@ -151,13 +164,13 @@ export default function ProductsView({ client, onRefreshMetrics }: ProductsViewP
       image_url: finalImageUrl
     });
 
-    setProducts(db.getProducts(client.id));
+    await reloadProducts();
     setIsAddOpen(false);
     resetForm();
     onRefreshMetrics?.();
   };
 
-  const handleUpdateProduct = (e: React.FormEvent) => {
+  const handleUpdateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
 
@@ -166,7 +179,7 @@ export default function ProductsView({ client, onRefreshMetrics }: ProductsViewP
     // Maintain existing or update with new
     const finalImageUrl = uploadedImageUrl || editingProduct.image_url || null;
 
-    db.updateProduct(editingProduct.id, {
+    await db.updateProduct(editingProduct.id, {
       name,
       category,
       sku,
@@ -179,16 +192,16 @@ export default function ProductsView({ client, onRefreshMetrics }: ProductsViewP
       image_url: finalImageUrl
     });
 
-    setProducts(db.getProducts(client.id));
+    await reloadProducts();
     setEditingProduct(null);
     resetForm();
     onRefreshMetrics?.();
   };
 
-  const handleDeleteProduct = (id: string) => {
+  const handleDeleteProduct = async (id: string) => {
     if (confirm('Are you sure you want to remove this product from the inventory catalogue?')) {
-      db.deleteProduct(id);
-      setProducts(db.getProducts(client.id));
+      await db.deleteProduct(id);
+      await reloadProducts();
       onRefreshMetrics?.();
     }
   };

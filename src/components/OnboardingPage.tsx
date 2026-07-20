@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Sparkles, Building, ArrowRight, Shield, Coffee, Hammer, BarChart, User, Users, CheckCircle, Flame, Gift, Plus } from 'lucide-react';
+import { Sparkles, Building, ArrowRight, Shield, Coffee, Hammer, BarChart, User } from 'lucide-react';
 import { motion } from 'motion/react';
-import { db } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, workerBaseUrl } from '../lib/supabase';
 import { Client } from '../types';
 
 interface OnboardingPageProps {
@@ -12,48 +12,89 @@ interface OnboardingPageProps {
 
 export default function OnboardingPage({ user, onOnboardingComplete, onCancel }: OnboardingPageProps) {
   const [businessName, setBusinessName] = useState('');
-  const [selectedIndustry, setSelectedIndustry] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
+  const [selectedIndustry, setSelectedIndustry] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const industries = [
-    { id: 'cafe', label: 'Coffee Shop', icon: Coffee, desc: 'Roasteries, espresso bars & organic bakeries' },
-    { id: 'restaurant', label: 'Restaurant', icon: Flame, desc: 'Bistros, diners, pizzerias & custom caterers' },
-    { id: 'barbershop', label: 'Barbershop', icon: ScissorsIcon, desc: 'Men\'s grooming, beard trims & hot towel shaves' },
-    { id: 'salon', label: 'Beauty Salon', icon: Sparkles, desc: 'Hair treatments, nail styling & wellness therapies' },
-    { id: 'retail', label: 'Retail Store', icon: Gift, desc: 'Boutiques, design galleries & custom craft shops' },
-    { id: 'gym', label: 'Fitness Gym', icon: Flame, desc: 'Crossfit studios, private coaches & athletic clubs' },
-    { id: 'construction', label: 'Construction', icon: Hammer, desc: 'Renovators, timber builders & civil engineers' },
     { id: 'agency', label: 'Digital Agency', icon: BarChart, desc: 'Design studios, marketing firms & web agencies' },
+    { id: 'barbershop', label: 'Barbershop', icon: ScissorsIcon, desc: 'Men\'s grooming, beard trims & hot towel shaves' },
+    { id: 'cafe', label: 'Coffee Shop', icon: Coffee, desc: 'Roasteries, espresso bars & organic bakeries' },
+    { id: 'construction', label: 'Construction', icon: Hammer, desc: 'Renovators, timber builders & civil engineers' },
     { id: 'consultant', label: 'Consultant', icon: User, desc: 'Financial planners, business advisors & tax coaches' },
     { id: 'clinic', label: 'Medical Clinic', icon: Shield, desc: 'Physiotherapists, dental experts & wellness docs' },
   ];
 
-  const handleCreateWorkspace = () => {
+  const handleCreateWorkspace = async () => {
     if (!businessName.trim()) {
       alert('Please enter a business name.');
       return;
     }
-    if (!selectedIndustry) {
-      alert('Please select your business industry.');
-      return;
-    }
 
     setIsCreating(true);
+    setErrorMessage('');
 
-    // Simulated network setup handshake
-    setTimeout(() => {
-      const newClient = db.createBusinessProfile(
-        user.email,
-        user.name,
-        businessName.trim(),
-        selectedIndustry,
-        logoUrl.trim() || undefined
-      );
-      
+    try {
+      // Get auth token
+      let token = '';
+      if (isSupabaseConfigured && supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token || '';
+      } else {
+        // Demo mode: create a mock token
+        const payload = { sub: 'user-onboarding-' + Date.now(), email: user.email };
+        const base64Payload = btoa(JSON.stringify(payload));
+        token = `mockHeader.${base64Payload}.mockSignature`;
+      }
+
+      // Call Worker to claim/create account
+      const baseUrl = (workerBaseUrl || '').replace(/\/$/, '');
+      const response = await fetch(`${baseUrl}/api/claim-account`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ businessName: businessName.trim() }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to create workspace');
+      }
+
+      const data = await response.json();
+      if (data.success && data.client) {
+        const clientFromWorker: Client = {
+          id: data.client.client_id,
+          name: data.client.business_name || businessName.trim(),
+          logo_url: data.client.logo_url || '',
+          business_type: (selectedIndustry || 'agency') as any,
+          primary_color: data.client.primary_color || '#1e293b',
+          secondary_color: data.client.secondary_color || '#3b82f6',
+          banking_details: '',
+          address: '',
+          phone: '',
+          email: data.client.owner_email || user.email,
+        };
+        
+        // Also update localStorage user with client_id
+        try {
+          const savedUser = JSON.parse(localStorage.getItem('grafix_current_user') || '{}');
+          savedUser.client_id = data.client.client_id;
+          localStorage.setItem('grafix_current_user', JSON.stringify(savedUser));
+        } catch (e) {}
+
+        setIsCreating(false);
+        onOnboardingComplete(clientFromWorker);
+      } else {
+        throw new Error(data.error || 'Failed to create workspace');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to create workspace');
       setIsCreating(false);
-      onOnboardingComplete(newClient);
-    }, 1500);
+    }
   };
 
   return (

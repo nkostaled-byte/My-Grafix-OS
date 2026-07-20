@@ -576,7 +576,7 @@ export default function LoginPage({ onLoginSuccess, onNavigateHome }: LoginPageP
         <motion.div 
           initial={{ opacity: 0, y: 30, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.8, cubicBezier: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           className="w-full max-w-lg bg-white rounded-2xl border border-gray-100 shadow-2xl overflow-hidden relative z-10"
         >
           {/* Top Bar */}
