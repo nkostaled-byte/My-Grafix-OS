@@ -116,6 +116,8 @@ export const workerApi = {
     pendingInvoices: number;
     unreadSubmissions: number;
     todayBookings: any[];
+    daily_sales: { date: string; revenue: number; orders: number }[];
+    monthly_revenue: { month: string; revenue: number }[];
   }>('/api/dashboard/metrics'),
 
   // --- Products ---
@@ -178,7 +180,12 @@ export const workerApi = {
     }),
 
   // --- Search ---
-  searchAll: (q: string) => request(`/api/search?q=${encodeURIComponent(q)}`),
+  searchAll: async (q: string) => {
+    const token = await getAuthToken();
+    const headers: HeadersInit = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return request(`/api/search?q=${encodeURIComponent(q)}`, { headers });
+  },
 
   // --- Upload ---
   uploadFile: async (file: File, folder: 'logos' | 'profile' | 'products'): Promise<WorkerResponse<{ url: string; key: string }>> => {
@@ -211,30 +218,32 @@ export const workerApi = {
   createInvoice: (data: any) => request('/api/invoices', { method: 'POST', body: JSON.stringify(data) }),
   sendInvoice: (id: string) => request(`/api/invoices/${id}/send`, { method: 'POST' }),
 
-  // --- Export CSV ---
-  exportCsv: async (table: string): Promise<WorkerResponse<{ csvContent: string; fileName: string }>> => {
+  // --- Contact Form Submission (public) ---
+  submitContactForm: (data: any) =>
+    request('/api', { method: 'POST', body: JSON.stringify(data) }),
+
+  // --- CSV Export (dashboard-triggered) ---
+  exportCsv: async (table: string): Promise<{ success: boolean; csvContent: string; fileName: string }> => {
     const baseUrl = getBaseUrl();
     const token = await getAuthToken();
     const headers: HeadersInit = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     try {
-      const response = await fetch(`${baseUrl}/api/export/${table}`, { headers });
+      const response = await fetch(`${baseUrl}/api/export/${encodeURIComponent(table)}`, { headers });
       if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        return { success: false, error: errText || `Export failed with status ${response.status}` };
+        const body = await response.json().catch(() => null);
+        return { success: false, csvContent: '', fileName: '' };
       }
       const csvContent = await response.text();
-      const fileName = `${table}-${new Date().toISOString().slice(0, 10)}.csv`;
-      return { success: true, data: { csvContent, fileName } };
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const fileNameMatch = disposition.match(/filename="?([^"]+)"?/);
+      const fileName = fileNameMatch ? fileNameMatch[1] : `${table}-${new Date().toISOString().slice(0, 10)}.csv`;
+      return { success: true, csvContent, fileName };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Export failed' };
+      return { success: false, csvContent: '', fileName: '' };
     }
   },
-
-  // --- Contact Form Submission (public) ---
-  submitContactForm: (data: any) =>
-    request('/api/contact', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 export default workerApi;

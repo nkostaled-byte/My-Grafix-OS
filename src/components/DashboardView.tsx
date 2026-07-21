@@ -70,7 +70,7 @@ export default function DashboardView({ client, onNavigate, onTriggerQuickAction
 
     try {
       let token = '';
-      const { isSupabaseConfigured, supabase, workerBaseUrl } = await import('../lib/supabase');
+      const { isSupabaseConfigured, supabase } = await import('../lib/supabase');
       
       if (isSupabaseConfigured && supabase) {
         const { data: { session } } = await supabase.auth.getSession();
@@ -82,41 +82,14 @@ export default function DashboardView({ client, onNavigate, onTriggerQuickAction
         token = `mockHeader.${btoa(JSON.stringify(payload))}.mockSignature`;
       }
 
-      const endpoint = isSupabaseConfigured 
-        ? `${workerBaseUrl}/api/claim-account/relink`
-        : `${window.location.origin}/api/claim-account/relink`;
+      const result = await workerApi.relinkAccount(token, claimCode.trim());
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ claimCode: claimCode.trim() }),
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        const errMessage = errData.error || `Error ${response.status}: Failed to link account.`;
-        if (response.status === 404) {
-          throw new Error('Invalid claim code. Please check and try again.');
-        } else if (response.status === 409) {
-          if (errMessage.includes('manual merge')) {
-            throw new Error('Your current account already contains active business data. This needs a manual merge — contact support.');
-          } else {
-            throw new Error('This business is already linked to another account. Please contact support.');
-          }
-        }
-        throw new Error(errMessage);
-      }
-
-      const data = await response.json();
-      if (data.success) {
+      if (result.success) {
         setRelinkSuccess(true);
         const savedUserStr = localStorage.getItem('grafix_current_user');
-        if (savedUserStr) {
+        if (savedUserStr && result.data?.client_id) {
           const userObj = JSON.parse(savedUserStr);
-          userObj.client_id = data.client?.client_id;
+          userObj.client_id = result.data.client_id;
           localStorage.setItem('grafix_current_user', JSON.stringify(userObj));
         }
         
@@ -124,7 +97,17 @@ export default function DashboardView({ client, onNavigate, onTriggerQuickAction
           window.location.reload();
         }, 1500);
       } else {
-        throw new Error(data.error || 'Failed to link workspace.');
+        // Map Worker error messages to user-friendly messages
+        const errMsg = result.error || 'Failed to link workspace.';
+        if (errMsg.includes('Invalid claim code')) {
+          throw new Error('Invalid claim code. Please check and try again.');
+        } else if (errMsg.includes('manual merge')) {
+          throw new Error('Your current account already contains active business data. This needs a manual merge — contact support.');
+        } else if (errMsg.includes('already linked to another account')) {
+          throw new Error('This business is already linked to another account. Please contact support.');
+        } else {
+          throw new Error(errMsg);
+        }
       }
     } catch (err: any) {
       setRelinkError(err.message || 'Linking failed.');

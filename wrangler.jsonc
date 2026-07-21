@@ -6,4 +6,15 @@
     "directory": "./dist",
     "not_found_handling": "single-page-application"
   }
+
+  // Frontend environment variables are intentionally NOT committed here.
+  // Set these in the Cloudflare Pages dashboard (Settings > Environment variables)
+  // so real values never end up in Git:
+  //   VITE_WORKER_BASE_URL=https://mygrafix-dashboard-worker.mygrafix.workers.dev
+  //   VITE_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
+  //   VITE_SUPABASE_ANON_KEY=YOUR-ANON-KEY
+  //
+  // NOTE: VITE_* vars are bundled into the browser at build time. Only the
+  // Supabase anon key (safe for frontend) belongs here. Service-role keys,
+  // Resend/R2 credentials, and JWT secrets live ONLY in the Worker's secrets.
 }

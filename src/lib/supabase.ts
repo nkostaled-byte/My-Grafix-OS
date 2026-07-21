@@ -375,7 +375,7 @@ export const db = {
   async exportCsvAction(clientId: string, table: string): Promise<{ success: boolean; csvContent: string; fileName: string }> {
     const result = await workerApi.exportCsv(table);
     return result.success
-      ? { success: true, csvContent: result.data?.csvContent || '', fileName: result.data?.fileName || '' }
+      ? { success: true, csvContent: result.csvContent || '', fileName: result.fileName || '' }
       : { success: false, csvContent: '', fileName: '' };
   },
 

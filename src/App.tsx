@@ -266,7 +266,12 @@ export default function App() {
     setActivePage('dashboard');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      if (isSupabaseConfigured && supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (e) { /* sign out should not block UI cleanup */ }
     db.signOutSimulated();
     setSessionUser(null);
     try {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, Search, Plus, FileText, Send, 
-  Trash2
+  Trash2, AlertTriangle
 } from 'lucide-react';
 import { db } from '../lib/supabase';
 import { Client, Order, OrderItem, Product } from '../types';
@@ -17,6 +17,8 @@ export default function OrdersView({ client, onRefreshMetrics }: OrdersViewProps
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // POS Form States
   const [custName, setCustName] = useState('');
@@ -31,14 +33,26 @@ export default function OrdersView({ client, onRefreshMetrics }: OrdersViewProps
 
   // Load data asynchronously from Worker
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const [loadedOrders, loadedProducts] = await Promise.all([
-        db.getOrders(client.id),
-        db.getProducts(client.id),
-      ]);
-      setCurrentOrders(loadedOrders as Order[]);
-      setProducts(loadedProducts as Product[]);
+      setLoading(true);
+      setError(null);
+      try {
+        const [loadedOrders, loadedProducts] = await Promise.all([
+          db.getOrders(client.id),
+          db.getProducts(client.id),
+        ]);
+        if (!cancelled) {
+          setCurrentOrders(loadedOrders as Order[]);
+          setProducts(loadedProducts as Product[]);
+        }
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Failed to load orders data.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, [client.id]);
 
   const reloadOrders = async () => {
@@ -119,6 +133,34 @@ export default function OrdersView({ client, onRefreshMetrics }: OrdersViewProps
     link.click();
     document.body.removeChild(link);
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="orders-view-container">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin mb-3" />
+          <p className="text-xs font-medium">Loading orders...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="orders-view-container">
+        <div className="flex flex-col items-center justify-center py-20 text-rose-500">
+          <AlertTriangle className="w-8 h-8 mb-3" />
+          <p className="text-xs font-medium">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in" id="orders-view-container">

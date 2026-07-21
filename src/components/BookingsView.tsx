@@ -18,6 +18,8 @@ export default function BookingsView({ client, onRefreshMetrics }: BookingsViewP
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [activeView, setActiveView] = useState<'list' | 'calendar'>('list');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Form states
   const [custName, setCustName] = useState('');
@@ -30,16 +32,28 @@ export default function BookingsView({ client, onRefreshMetrics }: BookingsViewP
 
   // Load data asynchronously from Worker
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const [loadedBookings, loadedServices, loadedStaff] = await Promise.all([
-        db.getBookings(client.id),
-        db.getServices(client.id),
-        db.getStaff(client.id),
-      ]);
-      setBookings(loadedBookings as Booking[]);
-      setServices(loadedServices as Service[]);
-      setStaffList(loadedStaff as Staff[]);
+      setLoading(true);
+      setError(null);
+      try {
+        const [loadedBookings, loadedServices, loadedStaff] = await Promise.all([
+          db.getBookings(client.id),
+          db.getServices(client.id),
+          db.getStaff(client.id),
+        ]);
+        if (!cancelled) {
+          setBookings(loadedBookings as Booking[]);
+          setServices(loadedServices as Service[]);
+          setStaffList(loadedStaff as Staff[]);
+        }
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Failed to load bookings data.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, [client.id]);
 
   const reloadBookings = async () => {
@@ -91,6 +105,34 @@ export default function BookingsView({ client, onRefreshMetrics }: BookingsViewP
     link.click();
     document.body.removeChild(link);
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="bookings-view-container">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin mb-3" />
+          <p className="text-xs font-medium">Loading bookings...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="bookings-view-container">
+        <div className="flex flex-col items-center justify-center py-20 text-rose-500">
+          <AlertTriangle className="w-8 h-8 mb-3" />
+          <p className="text-xs font-medium">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in" id="bookings-view-container">

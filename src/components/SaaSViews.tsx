@@ -14,6 +14,8 @@ export function CustomersView({ client }: { client: Client }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
   const [selectedCust, setSelectedCust] = useState<Customer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Form states
   const [name, setName] = useState('');
@@ -25,10 +27,20 @@ export function CustomersView({ client }: { client: Client }) {
 
   // Load customers asynchronously
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const loaded = await db.getCustomers(client.id);
-      setCustomers(loaded as Customer[]);
+      setLoading(true);
+      setError(null);
+      try {
+        const loaded = await db.getCustomers(client.id);
+        if (!cancelled) setCustomers(loaded as Customer[]);
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Failed to load customers data.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, [client.id]);
 
   const reloadCustomers = async () => {
@@ -58,6 +70,34 @@ export function CustomersView({ client }: { client: Client }) {
     if (custEmail.includes('heritagetrust')) return 4500.00;
     return 0.00;
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="customers-panel">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin mb-3" />
+          <p className="text-xs font-medium">Loading customers...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="customers-panel">
+        <div className="flex flex-col items-center justify-center py-20 text-rose-500">
+          <AlertTriangle className="w-8 h-8 mb-3" />
+          <p className="text-xs font-medium">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in" id="customers-panel">
@@ -190,6 +230,8 @@ export function InvoicesView({ client }: { client: Client }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Form states
   const [custName, setCustName] = useState('');
@@ -200,10 +242,20 @@ export function InvoicesView({ client }: { client: Client }) {
 
   // Load invoices asynchronously from Worker
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const loaded = await db.getInvoices(client.id);
-      setInvoices(loaded as Invoice[]);
+      setLoading(true);
+      setError(null);
+      try {
+        const loaded = await db.getInvoices(client.id);
+        if (!cancelled) setInvoices(loaded as Invoice[]);
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Failed to load invoices data.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, [client.id]);
 
   const reloadInvoices = async () => {
@@ -233,6 +285,34 @@ export function InvoicesView({ client }: { client: Client }) {
     alert(`Emailed professional invoice PDF ${inv.invoice_number} copy to ${inv.customer_email} successfully!`);
     await reloadInvoices();
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="invoices-panel">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin mb-3" />
+          <p className="text-xs font-medium">Loading invoices...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="invoices-panel">
+        <div className="flex flex-col items-center justify-center py-20 text-rose-500">
+          <AlertTriangle className="w-8 h-8 mb-3" />
+          <p className="text-xs font-medium">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in" id="invoices-panel">
@@ -353,16 +433,30 @@ export function InvoicesView({ client }: { client: Client }) {
 export function QuotesView({ client }: { client: Client }) {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const [loadedSubs, loadedStaff] = await Promise.all([
-        db.getSubmissions(client.id, 'quote'),
-        db.getStaff(client.id),
-      ]);
-      setSubmissions(loadedSubs as Submission[]);
-      setStaff(loadedStaff as Staff[]);
+      setLoading(true);
+      setError(null);
+      try {
+        const [loadedSubs, loadedStaff] = await Promise.all([
+          db.getSubmissions(client.id, 'quote'),
+          db.getStaff(client.id),
+        ]);
+        if (!cancelled) {
+          setSubmissions(loadedSubs as Submission[]);
+          setStaff(loadedStaff as Staff[]);
+        }
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Failed to load quotes data.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, [client.id]);
 
   const reloadSubmissions = async () => {
@@ -385,6 +479,34 @@ export function QuotesView({ client }: { client: Client }) {
     await reloadSubmissions();
     alert(`Quotation successfully converted to active draft invoice billing!`);
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="quotes-panel">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin mb-3" />
+          <p className="text-xs font-medium">Loading quotes...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="quotes-panel">
+        <div className="flex flex-col items-center justify-center py-20 text-rose-500">
+          <AlertTriangle className="w-8 h-8 mb-3" />
+          <p className="text-xs font-medium">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in" id="quotes-panel">
@@ -450,16 +572,30 @@ export function QuotesView({ client }: { client: Client }) {
 export function ContactFormsView({ client }: { client: Client }) {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const [loadedSubs, loadedStaff] = await Promise.all([
-        db.getSubmissions(client.id, 'contact'),
-        db.getStaff(client.id),
-      ]);
-      setSubmissions(loadedSubs as Submission[]);
-      setStaff(loadedStaff as Staff[]);
+      setLoading(true);
+      setError(null);
+      try {
+        const [loadedSubs, loadedStaff] = await Promise.all([
+          db.getSubmissions(client.id, 'contact'),
+          db.getStaff(client.id),
+        ]);
+        if (!cancelled) {
+          setSubmissions(loadedSubs as Submission[]);
+          setStaff(loadedStaff as Staff[]);
+        }
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Failed to load contact submissions data.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, [client.id]);
 
   const reloadSubmissions = async () => {
@@ -476,6 +612,34 @@ export function ContactFormsView({ client }: { client: Client }) {
     await db.updateSubmissionStatus(subId, 'archived');
     await reloadSubmissions();
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="contact-panel">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin mb-3" />
+          <p className="text-xs font-medium">Loading contact submissions...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="contact-panel">
+        <div className="flex flex-col items-center justify-center py-20 text-rose-500">
+          <AlertTriangle className="w-8 h-8 mb-3" />
+          <p className="text-xs font-medium">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in" id="contact-panel">
@@ -626,13 +790,25 @@ export function MarketingView({ client }: { client: Client }) {
 export function TeamView({ client }: { client: Client }) {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Load team asynchronously
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const loaded = await db.getTeamMembers(client.id);
-      setTeam(loaded as TeamMember[]);
+      setLoading(true);
+      setError(null);
+      try {
+        const loaded = await db.getTeamMembers(client.id);
+        if (!cancelled) setTeam(loaded as TeamMember[]);
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Failed to load team data.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, [client.id]);
 
   const reloadTeam = async () => {
@@ -667,6 +843,34 @@ export function TeamView({ client }: { client: Client }) {
       await reloadTeam();
     }
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="team-panel">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin mb-3" />
+          <p className="text-xs font-medium">Loading team...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="team-panel">
+        <div className="flex flex-col items-center justify-center py-20 text-rose-500">
+          <AlertTriangle className="w-8 h-8 mb-3" />
+          <p className="text-xs font-medium">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in" id="team-panel">

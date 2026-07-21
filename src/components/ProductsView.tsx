@@ -13,13 +13,25 @@ interface ProductsViewProps {
 
 export default function ProductsView({ client, onRefreshMetrics }: ProductsViewProps) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Load products asynchronously from Worker
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const loaded = await db.getProducts(client.id);
-      setProducts(loaded as Product[]);
+      setLoading(true);
+      setError(null);
+      try {
+        const loaded = await db.getProducts(client.id);
+        if (!cancelled) setProducts(loaded as Product[]);
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Failed to load products data.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, [client.id]);
 
   const reloadProducts = async () => {
@@ -149,7 +161,7 @@ export default function ProductsView({ client, onRefreshMetrics }: ProductsViewP
     const variants = variantsText.split(',').map(v => v.trim()).filter(Boolean);
 
     // If upload succeeds, insert the product row with returned image_url, otherwise null
-    const finalImageUrl = uploadedImageUrl || null;
+    const finalImageUrl = uploadedImageUrl || undefined;
 
     await db.createProduct(client.id, {
       name,
@@ -177,7 +189,7 @@ export default function ProductsView({ client, onRefreshMetrics }: ProductsViewP
     const variants = variantsText.split(',').map(v => v.trim()).filter(Boolean);
 
     // Maintain existing or update with new
-    const finalImageUrl = uploadedImageUrl || editingProduct.image_url || null;
+    const finalImageUrl = uploadedImageUrl || editingProduct.image_url || undefined;
 
     await db.updateProduct(editingProduct.id, {
       name,
@@ -237,6 +249,34 @@ export default function ProductsView({ client, onRefreshMetrics }: ProductsViewP
     setPreviewUrl(prod.image_url || '');
     setUploadError('');
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="products-view-container">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin mb-3" />
+          <p className="text-xs font-medium">Loading products...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6 animate-fade-in" id="products-view-container">
+        <div className="flex flex-col items-center justify-center py-20 text-rose-500">
+          <AlertTriangle className="w-8 h-8 mb-3" />
+          <p className="text-xs font-medium">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in" id="products-view-container">
